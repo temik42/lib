@@ -1,0 +1,9 @@
+gamma = 5./3   #gamma-factor
+T0 = 2e4   #K, temperature on the boundary
+h0 = 1e7   #cm, height of transition region
+rl0 = 1.52   #radloss factor on the boundary
+downvec = [0,0,-1]   #direction of gravity
+rl_fname = 'radloss.npz'   #radloss filename
+sctype = 'coronal'   #scale type; one of: 'coronal' or 'chromospheric'
+btype = 'mirror'   #boundary type; one of: 'continuous', 'mirror', 'periodic', 'constant' or 'ebtel'
+itype = 'Roe'   #cell interface type; one of: 'average' or 'Roe'
