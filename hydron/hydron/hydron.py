@@ -4,12 +4,9 @@ sys.path.append(dir)
 import time
 import threading
 import numpy as np
-#from numpy import dot
-#from numpy.linalg import inv, eig
 from . import Sun
 #from .utils import *
 from .config import defconfig
-from .radloss import RadLoss
 
 
 
@@ -41,7 +38,7 @@ class Scale():
         self.rhoe = self.rhou*self.u
         
         self.rl = self.rhoe/self.n**2/self.t #
-        self.kappa = self.x**2/self.T**3.5*self.rhoe/self.t #
+        self.kappa = self.x**2/self.T*self.rhoe/self.t #
 
 class Dataout():
     def __init__(self):
@@ -96,10 +93,12 @@ class Mainloop(threading.Thread):
             print(self.status)
             print('Elapsed time: {:.2f}'.format(time.time()-systime)+' seconds')
         
+
+        
         
         
 class Solver():
-    def __init__(self,dt,X,n,u,T,hrate=lambda s,t:0, config = defconfig()):
+    def __init__(self,dt,X,n,u,T, config = defconfig()):
         self.config = config
         
         self.sc = Scale(self.config)
@@ -108,21 +107,20 @@ class Solver():
         if (self.config.btype == 'ebtel'):
             self.T0 = self.config.T0/self.sc.T #
             self.rl0 = self.config.rl0*self.sc.rhoe*self.sc.t #
-            self.h0 = self.config.h0/self.sc.x #
-            self.set_radloss() #
-        else:
-            self.h0 = 0
         
+        self.h0 = self.config.h0/self.sc.x #
             
-        self.kappa = Sun.kappa/self.sc.kappa #
+        #self.kappa = Sun.kappa/self.sc.kappa #
         
         self.time = 0  
         self.dt = dt/self.sc.t
         
         self.set_geometry(X)
         self.set_initial_values(n,u,T)
-        self.set_hrate(hrate)
-   
+        self.set_heating()
+        self.set_gravity()
+        self.set_diffusion()
+        self.set_radloss() 
 
         
     
@@ -145,7 +143,7 @@ class Solver():
             Xi[i] = 0.5*(self.X[i] + np.roll(self.X[i],1))
          
         self.ds = np.sqrt(np.sum([d(self.X[i])**2 for i in range(0,self.ndim)],0))
-        self.ds[0] = 0
+        #self.ds[0] = 0
         
         self.dx = np.sqrt(np.sum([(np.roll(self.X[i],1)-self.X[i])**2 for i in range(0,self.ndim)],0))
         self.dx[0] = self.h0
@@ -156,8 +154,7 @@ class Solver():
 
         self.s = np.cumsum(self.ds)
         self.L = self.s[-1]-self.s[0]
-        
-        self.g = np.sum([self.config.downvec[i]*d(self.X[i]) for i in range(0,self.ndim)],0)/self.dxi*self.config.g/self.sc.a #
+       
         return self
         
     def set_initial_values(self,n,u,T):
@@ -173,13 +170,21 @@ class Solver():
         self.q0 = [np.copy(rho),np.copy(rhou),np.copy(rhoe)]
         return self
     
-    def set_hrate(self,hrate):
-        self.hrate = lambda: hrate(self.s*self.sc.x,self.time*self.sc.t)*self.A/self.sc.rhoe*self.sc.t
+    def set_heating(self):
+        self.Hr = lambda: self.config.hrate(self.s*self.sc.x,self.time*self.sc.t)*self.A/self.sc.rhoe*self.sc.t
+    
+    def set_gravity(self):
+        d = lambda x: np.gradient(x,edge_order = 1)     
+        
+        self.g = lambda: (np.sum([self.config.g[i]*d(self.X[i]) for i in range(0,self.ndim)],0)/
+                  self.ds/self.sc.a) #
     
     def set_radloss(self):
-        self.RL = RadLoss(self.config.rl_fname)
-        self.radloss = lambda: self.RL.get(self.T*self.sc.T)/self.sc.rl/self.A
-        
+        self.Lambda = lambda: self.config.Lambda(self.T*self.sc.T)/self.sc.rl/self.A
+    
+    def set_diffusion(self):
+        self.kappa = lambda: self.config.kappa(self.T*self.sc.T)/self.sc.kappa*self.A
+    
     def d_dx(self,q,order = 1):
         if (order == 1):
             out = (self.dx**2*np.roll(q,-1)+(self._dx**2-self.dx**2)*q-self._dx**2*np.roll(q,1))/self.ddx
@@ -192,58 +197,24 @@ class Solver():
             out[[0,-1]] = out[[1,-2]]
             return out
       
-    def interface(self,p):
+    def mean(self,p):
         if (self.config.itype == 'Roe'):
             return (p*np.sqrt(self.q[0])+np.roll(p*np.sqrt(self.q[0]),1))/(np.sqrt(self.q[0])+np.roll(np.sqrt(self.q[0]),1))
         if (self.config.itype == 'average'):
             return (p+np.roll(p,1))*0.5
         return p
-    """    
-    def diffuse_imp(self):
-        
-        dd = self.kappa*self.A*self.T**2.5*(self.config.gamma-1)/2/self.q[0]
-        z = 5./7*self.kappa*self.A*self.T**3.5
-        q = self.q[2]-self.q[1]**2/(2*self.q[0])
-        
-        D = -1/self.dt-2*dd/(self.dx*self._dx)
-        D[[0,-1]] = 1
-        
-        U = 2*np.roll(dd,-1)/(self._dx*(self.dx+self._dx))
-        U = U[:-1]
-        U[0] = 0
 
-        V = 2*np.roll(dd,1)/(self.dx*(self.dx+self._dx))
-        V = V[1:]
-        V[-1] = 0
-
-        B = self.d_dx(z,2) - q/self.dt
-        B[[0,-1]] = q[[0,-1]]
-        
-        self.q[2] += trisol(D,U,V,B) - q
-    """
-    def radiate(self):
-        self.qn[2] -= self.dt*self.q[0]**2*self.radloss()
-    
-    def diffuse(self):
-        D = self.interface(self.kappa*self.A*self.T**2.5)
-        self.F_c = - D*(self.T-np.roll(self.T,1))/self.dx
-        self.qn[2] += self.dt*(self.F_c - np.roll(self.F_c,-1))/self.dxi
-        
         
     def boundary(self):
-        if (self.config.btype == 'ebtel'):
-            self.q[0][[0,-1]] = self.p[[1,-2]]/self.T0
-            self.q[1][[0,-1]] = 0
-            self.q[2][[0,-1]] = self.p[[1,-2]]/(self.config.gamma-1)
-        
+      
         if (self.config.btype == 'mirror'):
             for i in range(0,3):
-                self.q[i][[0,-1]] = self.q[i][[1,-2]]*(-1)**i
+                self.q[i][[0,-1]] = self.q[i][[1,-2]]*(-1)**i        
             
         if (self.config.btype == 'continuous'):
             for i in range(0,3):
                 self.q[i][[0,-1]] = self.q[i][[1,-2]]
-            
+        
         if (self.config.btype == 'periodic'):
             for i in range(0,3):
                 self.q[i][[0,-1]] = self.q[i][[-2,1]]
@@ -252,64 +223,79 @@ class Solver():
             for i in range(0,3):
                 self.q[i][[0,-1]] = self.q0[i][[0,-1]]
     
+        if (self.config.btype == 'stationary'):
+            self.q[2][[0,-1]] = self.q[2][[1,-2]]-0.5*self.q[1][[1,-2]]**2/self.q[0][[1,-2]]
+            self.q[0][[0,-1]] = self.q[2][[0,-1]]/self.T0/(self.config.gamma-1)
+            self.q[1][[0,-1]] = 0
+            
+            
     
-    def get_uTp(self):
+    def get_cells(self):
         self.u = self.q[1]/self.q[0]
-        self.e = self.q[2]/self.q[0]
-        self.T = (self.e-self.u**2/2)*(self.config.gamma-1)
+        self.T = (self.q[2]/self.q[0]-self.u**2/2)*(self.config.gamma-1)
         self.p = self.q[0]*self.T
+        self.F = [self.q[1],self.q[1]*self.u + self.p,(self.q[2]+self.p)*self.u]
+        
 
         
-    def advect(self):
-        ui = self.interface(self.u)
-        c_si = self.interface(np.sqrt(self.config.gamma*self.T))
-        #ei = self.interface(self.e)
-        one = np.ones(self.nx)
-        #zero = np.zeros(self.nx)
+    def get_interfaces(self):
         gamma = self.config.gamma
+        ui = self.mean(self.u)
+        c_si = self.mean(np.sqrt(gamma*self.T))
+        Di = self.mean(self.kappa())
+        one = np.ones(self.nx)
         
-        if (self.config.btype == 'ebtel'):
-            ui[[1,-1]] = (- self.F_c[[1,-1]]
-                               - self.rl0/self.A[[0,-1]]*self.p[[0,-1]]**2*self.h0*np.array([1,-1]))/(2.5*self.p[[0,-1]])
+        self.Fi = [self.mean(self.F[i]) for i in range(0,3)]
+        Fc = Di*(self.T-np.roll(self.T,1))/self.dx
+        self.Fi[2] -= Fc ### diffusion flux
+        
+        #if (self.config.btype == 'ebtel'):
+        #    ui[[1,-1]] = (- Fc[[1,-1]]
+        #                      - self.rl0/self.A[[0,-1]]*self.p[[0,-1]]**2*self.h0*np.array([1,-1]))/(2.5*self.p[[0,-1]])
         
         lam = [ui-c_si,ui,ui+c_si]
-        
+        detR = 2*c_si**2/(gamma-1)
         R = [[one,one,one],
-             [ui-c_si,ui,ui+c_si],
-             [c_si**2/(gamma-1)+0.5*ui**2-c_si*ui,
+             lam,
+             [0.5*detR+0.5*ui**2-c_si*ui,
              0.5*ui**2,
-             c_si**2/(gamma-1)+0.5*ui**2+c_si*ui]]
+             0.5*detR+0.5*ui**2+c_si*ui]]
         
-        detR = 2*c_si**3/(gamma-1)          
-        Rinv = [[(R[i-2][j-2]*R[i-1][j-1]-R[i-2][j-1]*R[i-1][j-2])/detR for i in range(0,3)] for j in range(0,3)]
+        R1 = [[c_si*ui/(gamma-1)+0.5*ui**2,-c_si/(gamma-1)-ui,one],
+                [detR-ui**2,2*ui,-2*one],
+                [-c_si*ui/(gamma-1)+0.5*ui**2,c_si/(gamma-1)-ui,one]]
+        
+        dq = [self.q[i]-np.roll(self.q[i],1) for i in range(0,3)]
+
+        for j in range(0,3):       
+            Ai = 0.5*np.sum([R[j][i]*np.abs(lam[i]/detR)*np.sum([R1[i][k]*dq[k] for k in range(0,3)],0)          
+                          for i in range(0,3)],0)
               
+            self.Fi[j] -= Ai
         
-        for j in range(0,3):
-            
-            Wi = [R[j][i]*lam[i]*
-                          np.sum([Rinv[i][k]*(self.q[k]-np.roll(self.q[k],1)) for k in range(0,3)],0)          
-                          for i in range(0,3)]
-            
-            self.qn[j] -= self.dt*np.sum([np.where(lam[i] >= 0, Wi[i],np.roll(Wi[i],-1)) for i in range(0,3)],0)/self.dxi
-            
-   
+        #if (self.config.btype == 'ebtel'):
+        #    for i in range(0,3):
+        #        self.Fi[i][[1,-1]] = 0
+        
+
+        
     
-    def step(self): 
-        self.get_uTp()
+    def advect(self):
+        for i in range(0,3):
+            self.q[i] -= self.dt*(np.roll(self.Fi[i],-1)-self.Fi[i])/self.dxi
+
+    def step(self):
         self.boundary()
+        self.get_cells()
+        self.get_interfaces()
         
-        self.qn = np.copy(self.q)
-        
-        #self.radiate()
-        #self.diffuse()
         self.advect()
-               
-        #self.qn[2] += self.dt*self.hrate()
-        #self.qn[1] += self.dt*self.q[0]*self.g
-        #self.qn[2] += self.dt*self.q[1]*self.g 
         
-        self.q = np.copy(self.qn)
-        
+        self.q[2] -= self.dt*self.q[0]**2*self.Lambda()
+        self.q[2] += self.dt*self.Hr()
+        self.q[2] += self.dt*self.q[1]*self.g() 
+        self.q[1] += self.dt*self.q[0]*self.g()
+   
         self.time += self.dt
 
 
