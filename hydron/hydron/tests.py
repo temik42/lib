@@ -20,7 +20,7 @@ def Diffusion():
     cfg.btype = 'constant'
     
     cfg.kappa = lambda T: 1e-2
-    cfg.hrate = lambda s,t: 1e-2
+    cfg.Hr = lambda s,t: 1e-2
     return (dt,tau,X,n,u,T,cfg)        
 
 
