@@ -1,56 +1,45 @@
 import os,sys
 dir = os.path.dirname(__file__)
 sys.path.append(dir)
-import time
 import threading
 import numpy as np
-from . import Sun
 from .config import defconfig
 
+def load(filename):
+    try:
+        import pickle
+        return pickle.load(open(filename,'rb'))
+    except:
+        print "can't load file"
 
-class Scale():
-    def __init__(self, config):
-        self.m = config.m
-        self.k_b = config.k_b
-        self.gamma = config.gamma
         
-        if (config.sctype == 'noscale'):
-            self.set(1,1,1)
-            
-        if (config.sctype == 'coronal'):
-            self.set(1,1e9,1e6)
-        
-        if (config.sctype == 'chromospheric'):
-            self.set(1,1e11,1e4)
-        
-        
-    def set(self, t, n, T):   
-        self.t = t
-        self.n = n
-        self.T = T
-        
-        self.u = np.sqrt(self.k_b/self.m*self.T)
-        self.x = self.u*self.t
-        self.a = self.u/self.t
-        
-        self.rho = self.n*self.m
-        self.rhou = self.rho*self.u
-        self.rhoe = self.rhou*self.u
-        
-        self.rl = self.rhoe/self.n**2/self.t
-        self.kappa = self.x**2/self.T*self.rhoe/self.t
+def save(obj, filename):
+    try:
+        import pickle
+        pickle.dump(obj,open(filename, 'wb'))
+    except:
+        print "can't save object"
 
-class Data():
-    def __init__(self, x, scale):
-        self.scale = scale
-        self.x = x
+        
+        
+class Data(object):
+    def __init__(self, config = defconfig()):
         self.q = [[],[],[]]
         self.time = []
-        
+    
+    def set_x(self,x):
+        self.x = x
+        return self
+    
+    def set_config(self, config):
+        self.config = config
+        self.scale = config.scale
+        return self
+    
     def add(self,time,q):
         for i in range(0,3):
             self.q[i] += [q[i]]
-        self.time += [time]
+        self.time += [time] 
             
     def n(self, scale=0):
         if (scale == 0):
@@ -65,7 +54,7 @@ class Data():
     def T(self, scale=0):
         if (scale == 0):
             scale = self.scale.T
-        return (self.q[2]/self.n(1)-self.u(1)**2/2)*(self.scale.gamma-1)*scale
+        return (self.q[2]/self.n(1)-self.u(1)**2/2)*(self.config.gamma-1)*scale
     
     def tau(self, scale=0):
         if (scale == 0):
@@ -85,12 +74,14 @@ class Data():
     
         
 class Mainloop(threading.Thread):
-    def __init__(self,solver,maxiter,skip=0,each=1,verbose=True):
+    def __init__(self,solver,data,tau,dt,each,skip,verbose):
         threading.Thread.__init__(self)
         self.solver = solver
-        self.maxiter = maxiter
-        self.skip = skip
-        self.each = each
+        self.data = data
+        self.dt = dt
+        self.max_iter = int(tau/dt)
+        self.skip_iter = int(skip/dt)
+        self.each_iter = int(each/dt)
         self.verbose = verbose
         self.event = threading.Event()
         
@@ -102,22 +93,24 @@ class Mainloop(threading.Thread):
     def run(self):
         self.status = 'in progress'
         if self.verbose:
+            import time
             print(self.status+' ...')
             print('|-10%-|-20%-|-30%-|-40%-|-50%-|-60%-|-70%-|-80%-|-90%-|-100%|')    
-
-        systime = time.time()
+            systime = time.time()
         
-        for self.niter in range(0,self.maxiter):
-            self.solver.step()
+        for self.n_iter in range(0,self.max_iter):
+            self.solver.step(self.dt)
             
-            if (self.niter >= self.skip) and (int(self.niter-self.skip) % int(self.each) == 0):
-                self.solver.out.add(self.solver.time,
-                                    [self.solver.q[0]/self.solver.A,self.solver.q[1]/self.solver.A,self.solver.q[2]/self.solver.A])
+            if (self.n_iter >= self.skip_iter) and (int(self.n_iter-self.skip_iter) % int(self.each_iter) == 0):
+                self.data.add(self.solver.time,
+                              [np.copy(self.solver.q[0]),
+                               np.copy(self.solver.q[1]),
+                               np.copy(self.solver.q[2])])
             
             if self.verbose:
-                if (self.niter % (self.maxiter/10) == 0):
+                if (self.n_iter % (self.max_iter/10) == 0):
                     sys.stdout.write('|')    
-                if (self.niter % (self.maxiter/50) == 0):
+                if (self.n_iter % (self.max_iter/50) == 0):
                     sys.stdout.write('x')
                
         self.status = 'done!'
@@ -132,25 +125,21 @@ class Mainloop(threading.Thread):
         
         
         
-class Solver():
-    def __init__(self,dt,X,n,u,T, config = defconfig()):
-        self.config = config
-        self.sc = Scale(self.config)
-        
-        self.time = 0  
-        self.dt = dt/self.sc.t
-        
+class Solver(object):
+    def __init__(self,X,n,u,T,config=defconfig(), time=0):
+        self.set_config(config)
+
         self.set_geometry(X)
         self.set_initial_values(n,u,T)
         self.set_heating()
         self.set_gravity()
         self.set_diffusion()
         self.set_radloss() 
-        
-        self.out = Data(self.s,self.sc)
+
+        self.time = time
     
     
-    def d_dx(self,q,order = 1):
+    def d_dx(self,q,order=1):
         if (order == 1):
             out = (self.dx**2*np.roll(q,-1)+(self._dx**2-self.dx**2)*q-self._dx**2*np.roll(q,1))/self.ddx
             out[0] = (-(self.dx[2]**2+2*self.dx[1]*self.dx[2])*q[0]+(self.dx[1]+self.dx[2])**2*q[1]-self.dx[1]**2*q[2])/self.ddx[1]
@@ -173,6 +162,11 @@ class Solver():
         return p
     
     
+    def set_config(self, config):
+        self.config = config
+        self.scale = config.scale
+        
+        
     def set_geometry(self,X,A=np.array([1.])):
         d = lambda x: np.gradient(x,edge_order = 1)        
         
@@ -184,7 +178,7 @@ class Solver():
             self.ndim = X.shape[0]
             self.nx = X.shape[1]
                
-        self.X = X.reshape((self.ndim,self.nx))/self.sc.x       
+        self.X = X.reshape((self.ndim,self.nx))/self.scale.x       
         self.A = A
         self.Xi = np.zeros_like(self.X)
         
@@ -208,22 +202,26 @@ class Solver():
     
     
     def set_initial_values(self,n,u,T):
-        self.u = u/self.sc.u
-        self.T = T/self.sc.T
+        n = n/self.scale.n
+        u = u/self.scale.u
+        T = T/self.scale.T
         
-        rho = n*self.A/self.sc.n
-        rhou = n*self.u*self.A/self.sc.n
-        rhoe = n*(self.u**2/2 + self.T/(self.config.gamma-1))*self.A/self.sc.n
+        rho = n*self.A
+        rhou = n*u*self.A
+        rhoe = n*(u**2/2 + T/(self.config.gamma-1))*self.A
         
         
         self.q = [rho,rhou,rhoe]
         self.q0 = [np.copy(rho),np.copy(rhou),np.copy(rhoe)]
+        self.T0 = np.copy(T)
+        
+        self.set_boundary()
         return self
     
     
     def set_heating(self):
         if self.config.Hr:
-            self.Hr = lambda: self.config.Hr(self.s*self.sc.x,self.time*self.sc.t)*self.A/self.sc.rhoe*self.sc.t
+            self.Hr = lambda: self.config.Hr(self.s*self.scale.x,self.time*self.scale.t)*self.A/self.scale.rhoe*self.scale.t
         else:
             self.Hr = False
     
@@ -231,27 +229,26 @@ class Solver():
     def set_gravity(self): 
         if self.config.g:
             self.g = lambda: (np.sum([self.config.g[i]*(np.roll(self.Xi[i],-1)-self.Xi[i]) for i in range(0,self.ndim)],0)/
-                              self.dxi/self.sc.a) #
+                              self.dxi/self.scale.a) #
         else:
             self.g = False
     
     
     def set_radloss(self):
         if self.config.Lambda:
-            self.Lambda = lambda: self.config.Lambda(self.T*self.sc.T)/self.sc.rl/self.A
+            self.Lambda = lambda: self.config.Lambda(self.T*self.scale.T)/self.scale.rl/self.A
         else:
             self.Lambda = False
     
     
     def set_diffusion(self):
         if self.config.kappa:
-            self.kappa = lambda: self.config.kappa(self.T*self.sc.T)/self.sc.kappa*self.A
+            self.kappa = lambda: self.config.kappa(self.T*self.scale.T)/self.scale.kappa*self.A
         else:
             self.kappa = False
 
         
     def set_boundary(self):
-      
         if (self.config.btype == 'mirror'):
             for i in range(0,3):
                 self.q[i][[0,-1]] = self.q[i][[1,-2]]*(-1)**i        
@@ -270,7 +267,7 @@ class Solver():
     
         if (self.config.btype == 'stationary'):
             self.q[2][[0,-1]] = self.q[2][[1,-2]]-0.5*self.q[1][[1,-2]]**2/self.q[0][[1,-2]]
-            self.q[0][[0,-1]] = self.q[2][[0,-1]]/self.config.T0/(self.config.gamma-1)
+            self.q[0][[0,-1]] = self.q[2][[0,-1]]/self.T0[[1,-2]]/(self.config.gamma-1)
             self.q[1][[0,-1]] = 0        
             
     
@@ -320,39 +317,50 @@ class Solver():
                 self.Fi[i] -= Ai
  
     
-    def advect(self):
+    def advect(self,dt):
         for i in range(0,3):
-            self.q[i] -= self.dt*(np.roll(self.Fi[i],-1)-self.Fi[i])/self.dxi
+            self.q[i] -= dt*(np.roll(self.Fi[i],-1)-self.Fi[i])/self.dxi
 
             
-    def step(self):
-        self.set_boundary()
+    def step(self,dt):  
         self.set_cells()
         self.set_fluxes()
         self.set_correction()
         
-        self.advect()
+        self.advect(dt)
 
         if self.Lambda:
-            self.q[2] -= self.dt*self.q[0]**2*self.Lambda()
+            self.q[2] -= dt*self.q[0]**2*self.Lambda()
         if self.Hr:
-            self.q[2] += self.dt*self.Hr()
+            self.q[2] += dt*self.Hr()
         if self.g:
-            self.q[2] += self.dt*self.q[1]*self.g() 
-            self.q[1] += self.dt*self.q[0]*self.g()   
-   
-        self.time += self.dt
+            self.q[2] += dt*self.q[1]*self.g() 
+            self.q[1] += dt*self.q[0]*self.g()   
+        
+        self.set_boundary()
+        self.time += dt
+    
+        
+    def run(self,tau,dt,data=Data(),each=0,n_out=100,skip=0):
+        data.set_x(self.s).set_config(self.config)
+        
+        tau /= self.scale.t
+        dt /= self.scale.t
+        skip /= self.scale.t
+        if (each == 0):
+            each = (tau-skip)/n_out
+        else:
+            each /= self.scale.t
+            
+        mainloop = Mainloop(self,data,tau,dt,each,skip,self.config.verbose)
+        mainloop.start()
+        if self.config.wait:
+            mainloop.wait()
+        return data
+    
+    
 
         
-    def run(self,tau,each=0,skip=0):
-        tau /= self.sc.t
-        if (each == 0):
-            each = tau/(100*self.dt)
-        self.mainloop = Mainloop(self,int(tau/self.dt),int(skip),int(each),self.config.verbose)
-        self.mainloop.start()
-        if self.config.wait:
-            self.mainloop.wait()
-        return self
         
 
         

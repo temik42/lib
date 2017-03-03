@@ -1,11 +1,21 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Mar 26 16:03:37 2015
-
-@author: artem
-"""
+import os,sys
+dir = os.path.dirname(__file__)
 import numpy as np
 
+
+class RadLoss(object):
+    def __init__(self, rl_fname='radloss.npz'):
+        rl = np.load(dir+'\\'+rl_fname)
+        self.rlRate = 10**rl['rlRate']
+        self.rlTemperature = 10**rl['temperature']
+    
+    def get(self,T):
+        def left(T):
+            return 1.16e-31*T**2
+        
+        return np.where(T > 1e4, np.interp(T, self.rlTemperature, self.rlRate, left = left(1e4), right = 0),
+                        left(T))
+    
 pi=np.pi
 
 c = 2.9979e10 # [cm s-1]
@@ -19,7 +29,6 @@ R_h = 1.0974e5 # [cm-1]
 a_0 = 5.2918e-9 # [cm]
 r_e = 2.8179e-13 # [cm]
 sigma = 5.6774e-5 # [erg cm-2 s-1 K-4]
-kappa = 9.2e-7 # [erg cm-2 s-1 K-7/2]
 
 eV = 1.6022e-12 # [erg]
 SFU = 1e-19 #[erg s-1 cm-2 Hz-1]
@@ -36,7 +45,7 @@ T_phot = 5762 # [K]
 
 c_p = 5./2
 c_v = 3./2
-gamma = c_p/c_v
+
 
 mu_c = 1.27
 n_c = 1e9
@@ -45,6 +54,15 @@ B_c = 100
 Z_c = 1
 lnLambda_c = 20
 
+
+gamma = c_p/c_v
+
+
+def kappa(T=T_c, lnLambda=lnLambda_c):
+    """Spitzer thermal conductivity [erg cm-2 s-1 K-1]"""
+    #kappa0 = k_b**3.5/m_e**0.5/e**4/lnLambda # [erg cm-2 s-1 K-7/2]
+    kappa0 = 9.2e-7 # [erg cm-2 s-1 K-7/2]
+    return kappa0*T**2.5
 
 def P_th(n=n_c, T=T_c):
     """thermal pressure [dyne cm-2]"""
@@ -58,9 +76,9 @@ def beta(n=n_c, T=T_c, B=B_c):
     """plasma beta parameter"""
     return P_th(n, T)/P_m(B)
 
-def h_t(T=T_c):
+def h_t(T=T_c, mu=mu_c):
     """thermal scale height [cm]"""
-    return 2*k_b*T/(mu_c*m_p*g_sun)
+    return 2*k_b*T/(mu*m_p*g_sun)
     
 def v_te(T=T_c):
     """electron thermal velocity [cm s-1]"""
@@ -100,11 +118,13 @@ def f_gi(B=B_c, Z=Z_c, mu=mu_c):
     
 def f_ce(n=n_c, T=T_c, lnLambda=lnLambda_c):
     """electron collision frequency [Hz]"""
-    return 3.64*n*lnLambda/T**1.5
+    c = 4*(2*np.pi)**0.5/3*e**4/m_e**0.5/k_b**1.5
+    return c*n*lnLambda/T**1.5
     
-def f_ci(n=n_c, T=T_c, Z=Z_c, lnLambda=lnLambda_c):
+def f_ci(n=n_c, T=T_c, Z=Z_c, mu=mu_c, lnLambda=lnLambda_c):
     """ion collision frequency [Hz]"""
-    return 5.98e-2*n*lnLambda*Z**2/T**1.5
+    c = 4*np.pi**0.5/3*e**4/(m_p*mu)**0.5/k_b**1.5
+    return c*n*lnLambda*Z**4/T**1.5
     
 def tau_ce(n=n_c, T=T_c, lnLambda=lnLambda_c):
     """electron collision time [s]"""
