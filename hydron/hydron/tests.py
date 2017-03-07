@@ -49,7 +49,7 @@ def Boltzmann():
 
 def Sod_tube():
     N = 1000       # number of gridpoints, units
-    dt = 1e-4    # stepsize, s
+    dt = 1e-3    # stepsize, s
     tau = 0.1   # total duration, s
     
     L = 1
@@ -64,5 +64,6 @@ def Sod_tube():
     cfg = defconfig()
     cfg.gamma = 7./5
     cfg.btype = 'mirror'
+    cfg.set_scale()
     
     return (dt,tau,X,n,u,T,cfg)

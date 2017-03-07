@@ -1,19 +1,18 @@
-import os,sys
+import os
 dir = os.path.dirname(__file__)
 import numpy as np
 
 
-class RadLoss(object):
-    def __init__(self, rl_fname='radloss.npz'):
-        rl = np.load(dir+'\\'+rl_fname)
+class Lambda(object):
+    def __init__(self, rl_fname='chianti_cor.npz'):
+        rl = np.load(dir+'\\radloss\\'+rl_fname)
         self.rlRate = 10**rl['rlRate']
-        self.rlTemperature = 10**rl['temperature']
+        self.temperature = 10**rl['temperature']
     
     def get(self,T):
         def left(T):
             return 1.16e-31*T**2
-        
-        return np.where(T > 1e4, np.interp(T, self.rlTemperature, self.rlRate, left = left(1e4), right = 0),
+        return np.where(T > 1e4, np.interp(T, self.temperature, self.rlRate, left = left(1e4), right = 0),
                         left(T))
     
 pi=np.pi
