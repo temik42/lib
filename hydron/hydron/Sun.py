@@ -3,18 +3,6 @@ dir = os.path.dirname(__file__)
 import numpy as np
 
 
-class Lambda(object):
-    def __init__(self, rl_fname='chianti_cor.npz'):
-        rl = np.load(dir+'\\radloss\\'+rl_fname)
-        self.rlRate = 10**rl['rlRate']
-        self.temperature = 10**rl['temperature']
-    
-    def get(self,T):
-        def left(T):
-            return 1.16e-31*T**2
-        return np.where(T > 1e4, np.interp(T, self.temperature, self.rlRate, left = left(1e4), right = 0),
-                        left(T))
-    
 pi=np.pi
 
 c = 2.9979e10 # [cm s-1]
@@ -55,6 +43,18 @@ lnLambda_c = 20
 
 
 gamma = c_p/c_v
+
+class Lambda(object):
+    def __init__(self, rl_fname='chianti_cor.npz'):
+        rl = np.load(dir+'\\radloss\\'+rl_fname)
+        self.rlRate = 10**rl['rlRate']
+        self.temperature = 10**rl['temperature']
+    
+    def get(self,T):
+        def left(T):
+            return 1.16e-31*T**2
+        return np.where(T > 1e4, np.interp(T, self.temperature, self.rlRate, left = left(1e4), right = 0),
+                        left(T))
 
 
 def kappa(T=T_c, lnLambda=lnLambda_c):

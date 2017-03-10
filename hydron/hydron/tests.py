@@ -19,8 +19,8 @@ def Diffusion():
     cfg = defconfig()
     cfg.btype = 'constant'
     
-    cfg.kappa = lambda T: 1e-2
-    cfg.Hr = lambda s,t: 1e-2
+    cfg.kappa = lambda T: np.ones_like(T)*1e-2
+    cfg.Hr = lambda s,t: np.ones_like(s)*1e-2
     return (dt,tau,X,n,u,T,cfg)        
 
 
@@ -30,12 +30,8 @@ def Boltzmann():
     tau = 100   # total duration, s
     
     R = 1
-    #idx = np.arange(0,N,dtype=np.float32)/(N-1)
-    #X = np.zeros((3,N), dtype = np.double)    # (N by 3) array of gridpoint coordinates, cm
-    #X[0] = np.cos(np.pi*idx)*R              # x-coordinates, cm
-    #X[2] = np.sin(np.pi*idx)*R              # y-coordinates, cm*L
-    
-    X = np.arange(0,N,dtype=np.float32)/(N-1)*R
+    idx = np.arange(0,N,dtype=np.float32)/(N-1)
+    X = idx*R
     
     n = np.ones(N, dtype = np.double)   # density, cm^{-3}
     u = np.zeros(N, dtype = np.double)     # velocity, cm/s
@@ -53,7 +49,9 @@ def Sod_tube():
     tau = 0.1   # total duration, s
     
     L = 1
-    X = np.arange(0,N,dtype=np.float32)/(N-1)*L
+    
+    idx = np.arange(0,N,dtype=np.float32)/(N-1)
+    X = idx*L
     
     n = np.ones(N, dtype = np.double)*1.25   # density, cm^{-3}
     n[0:N/2] = 10

@@ -31,9 +31,9 @@ class Scale(object):
 class defconfig(object):
     def __init__(self):
         self.gamma = 5./3   #gamma-factor
-        self.k_b = 1
-        self.m = 1    
-        self.base_scale = [1.,1.,1.]
+        self.k_b = 1   #Boltzmann constant
+        self.m = 1    #particle mass
+        self.base_scale = [1.,1.,1.]    #time, density and temperature scales
         
         self.btype = 'mirror'   #boundary type; one of: 'continuous', 'mirror', 'periodic', 'constant' or 'stationary'
         self.itype = 'Roe'   #cell interface type; one of: 'average' or 'Roe'
@@ -44,9 +44,7 @@ class defconfig(object):
         self.Lambda = False   #radiation loss function, function of T
         self.Hr = False   #heat rate function, function of s and t
         
-        self.cfl_lim = 0.1
-        self.wait = True
-        self.verbose = True
+        self.cfl_lim = 0.1    #CFL limiter
         
         self.set_scale()
         
@@ -58,14 +56,15 @@ class loopconfig(defconfig):
     def __init__(self):
         defconfig.__init__(self)
         
-        self.gamma = 5./3   #gamma-factor
+        self.gamma = 5./3
         self.k_b = 2*Sun.k_b
         self.m = Sun.mu_c*Sun.m_p
         self.base_scale=[1.,Sun.n_c,Sun.T_c]
         
         self.btype = 'stationary'
         
-        self.g = [0,0,-Sun.g_sun]
+        #self.g = [0,0,-Sun.g_sun]
+        self.g = False
         self._Lambda = Sun.Lambda('chianti_cor.npz')
         self.Lambda = lambda T: self._Lambda.get(T)
         self.kappa = Sun.kappa
