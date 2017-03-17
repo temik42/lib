@@ -26,8 +26,8 @@ def Diffusion():
 
 def Boltzmann():
     N = 100       # number of gridpoints, units
-    dt = 1e-3    # stepsize, s
-    tau = 100   # total duration, s
+    dt = 1e-1    # stepsize, s
+    tau = 100 # total duration, s
     
     R = 1
     idx = np.arange(0,N,dtype=np.float32)/(N-1)
@@ -44,9 +44,9 @@ def Boltzmann():
     return (dt,tau,X,n,u,T,cfg)    
 
 def Sod_tube():
-    N = 1000       # number of gridpoints, units
+    N = 1000      # number of gridpoints, units
     dt = 1e-3    # stepsize, s
-    tau = 0.1   # total duration, s
+    tau = 1e-1  # total duration, s
     
     L = 1
     
