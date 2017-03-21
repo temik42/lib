@@ -55,7 +55,7 @@ def Sod_tube():
     
     n = np.ones(N, dtype = np.double)*1.25   # density, cm^{-3}
     n[0:N/2] = 10
-    u = np.zeros(N, dtype = np.double)     # velocity, cm/s
+    u = np.ones(N, dtype = np.double)*0    # velocity, cm/s
     T = np.ones(N, dtype = np.double)*1     # temperature, K
     T[0:N/2] = 1.25
         

@@ -36,7 +36,7 @@ class defconfig(object):
         self.base_scale = [1.,1.,1.]    #time, density and temperature scales
         
         self.btype = 'mirror'   #boundary type; one of: 'continuous', 'mirror', 'periodic', 'constant' or 'stationary'
-        self.itype = 'average'   #cell interface type; one of: 'average' or 'Roe'
+        self.itype = 'Roe'   #cell interface type; one of: 'average' or 'Roe'
         self.ctype = 'Riemann'   #correction-step type; one of: 'Riemann' or 'upwind'
 
         self.g = False   #acceleration, vector

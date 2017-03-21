@@ -146,20 +146,20 @@ class Solver(object):
 
         self.time = 0
     
-    """
-    def mean(self,p,type = ''):
+
+    def average(self,p,type = ''):
         if (type == ''):
             type = self.config.itype
+        if (type == 'linear'):
+            return p[:-1]+delta(p)*self.dxa/self.dx
         if (type == 'Roe'):
             return ((p*np.sqrt(self.q[0]))[:-1]+(p*np.sqrt(self.q[0]))[1:])/(np.sqrt(self.q[0][:-1])+np.sqrt(self.q[0][1:]))
+            #return ((p*(self.q[0]))[:-1]+(p*(self.q[0]))[1:])/((self.q[0][:-1])+(self.q[0][1:]))
         if (type == 'average'):
             return average(p)
+        
         return p
-    """
-    
-    def average(self,p):
-        return (p[:-1]*self.dx2+p[1:]*self.dx1)/self.dx
-    
+
     
     def d_dx(self,p,order=1):
         if (order == 1):
@@ -178,15 +178,18 @@ class Solver(object):
     def set_x(self,X):
         if (len(X.shape) == 1):
             self.ndim = 1
-            self.nx = X.shape[0]
+            self.nx = X.shape[0]+2
         
         if (len(X.shape) == 2):
             self.ndim = X.shape[0]
-            self.nx = X.shape[1]
-               
-        self.X = X.reshape((self.ndim,self.nx))
-        self.Xi = np.zeros((self.ndim,self.nx-1),dtype=np.float32)
+            self.nx = X.shape[1]+2
         
+        self.X = np.zeros((self.ndim,self.nx),dtype=np.float32)
+        self.X[:,1:-1] = X
+        self.X[:,0] = 1.5*self.X[:,1]-0.5*self.X[:,2]
+        self.X[:,-1] = 1.5*self.X[:,-2]-0.5*self.X[:,-3]
+        
+        self.Xi = np.zeros((self.ndim,self.nx-1),dtype=np.float32)
         for i in range(0,self.ndim):
             self.Xi[i] = average(self.X[i])
         
@@ -197,12 +200,13 @@ class Solver(object):
     def update_x(self):
         self.dx = np.sqrt(np.sum([(delta(self.X[i]))**2 for i in range(0,self.ndim)],0))
         self.dxi = np.sqrt(np.sum([(delta(self.Xi[i]))**2 for i in range(0,self.ndim)],0))
-        self.dx1 = np.sqrt(np.sum([(self.Xi[i]-self.X[i][0:-1])**2 for i in range(0,self.ndim)],0))
-        self.dx2 = self.dx-self.dx1
+        self.dxa = np.sqrt(np.sum([(self.Xi[i]-self.X[i][:-1])**2 for i in range(0,self.ndim)],0))
         
         self.ex = [delta(self.Xi[i])/self.dxi for i in range(0,self.ndim)]
         self.exi = [delta(self.X[i])/self.dx for i in range(0,self.ndim)]
 
+        for i in range(0,self.ndim):
+            self.ex[i] = np.append(np.append(self.ex[i][0],self.ex[i]),self.ex[i][-1]) 
         
         self.x = np.cumsum(np.append([0],self.dx))
         self.xi = np.cumsum(np.append([0],self.dxi))
@@ -216,8 +220,12 @@ class Solver(object):
         rhou = n*u
         rhoe = n*(u**2/2 + T/(self.scale.gamma-1))
         
-        self.w = np.copy(u)
-        self.wi = self.average(self.w)
+        rho = np.append(np.append(0,rho),0)
+        rhou = np.append(np.append(0,rhou),0)
+        rhoe = np.append(np.append(0,rhoe),0)
+        
+        self.w = np.append(np.append(0,u),0)
+        #self.wi = self.average(self.w)
         #self.w = np.ones_like(u)
         
         self.q = [rho,rhou,rhoe]
@@ -260,7 +268,7 @@ class Solver(object):
         if (self.config.btype == 'mirror'):
             for i in range(0,3):
                 self.q[i][[0,-1]] = self.q[i][[1,-2]]*(-1)**i
-            
+        
         if (self.config.btype == 'continuous'):
             for i in range(0,3):
                 self.q[i][[0,-1]] = self.q[i][[1,-2]]
@@ -288,16 +296,16 @@ class Solver(object):
         self.T = (self.q[2]/self.q[0]-self.u**2/2)*(self.scale.gamma-1)
         self.p = self.q[0]*self.T
         self.c_s = np.sqrt(self.scale.gamma*self.T)
-        self.c_si = self.average(self.c_s)
+        #self.c_si = self.average(self.c_s)
         
-        #self.w =  smooth(self.u,3)
+        #self.w[1:-1] =  smooth(self.u[1:-1],3)
         self.w =  self.u*1
-        self.w[[0,-1]] = 0
+        #self.w[[0,-1]] = -self.w[[1,-2]]
         self.wi = self.average(self.w)  
             
-        self.F = [self.q[0]*(self.u-self.w),self.q[1]*(self.u-self.w)+self.p,self.q[2]*(self.u-self.w)+self.p*self.u] 
-        #self.F = [self.q[0]*(self.u-self.w),self.q[1]*(self.u-self.w)+self.p,(self.q[2]+self.p)*(self.u-self.w)] 
-        #self.F = [self.q[0]*(self.u-self.w),self.q[1]*(self.u-self.w),self.q[2]*(self.u-self.w)]
+        #self.F = [self.q[0]*(self.u-self.w),self.q[1]*(self.u-self.w)+self.p,self.q[2]*(self.u-self.w)+self.p*self.u] 
+        self.F = [self.q[1],self.q[1]*self.u+self.p,(self.q[2]+self.p)*self.u] 
+
                          
         if self.kappa:
             self.D = self.kappa()
@@ -305,8 +313,8 @@ class Solver(object):
     
     
     def get_substep(self, dt):
-        self.cfl = [np.max((np.abs((self.ui-self.wi))/self.dx)),
-                    np.max((np.abs(self.c_si)/self.dx))]
+        self.cfl = [np.max((np.abs(self.ui)/self.dx)),
+                    np.max((np.abs(self.c_s[1:-1])/self.dxi))]
         
         if self.kappa:
             self.cfl = self.cfl + [np.max((np.abs(self.Di)/self.dx**2))]
@@ -314,10 +322,10 @@ class Solver(object):
         return np.ceil(np.max(self.cfl)*dt/self.config.cfl_lim).astype(int)
                 
     def set_fluxes(self):
-        self.Fi = [self.average(self.F[i]) for i in range(0,3)]
+        self.Fi = [self.average(self.F[i],'linear') for i in range(0,3)]  ####
         
         if self.kappa:
-            self.Di = self.average(self.D)
+            self.Di = average(self.D)   ####
             self.Fci = self.Di*delta(self.T)/self.dx
             self.Fi[2] -= self.Fci
     
@@ -325,30 +333,33 @@ class Solver(object):
     def set_correction(self):
         ui = self.ui
         wi = self.wi
-        c_si = self.c_si
+        c_sl = self.c_s[:-1]   ###
+        c_sr = self.c_s[1:]   ###
+        
+        self.dq[1]-=wi*self.dq[0]
+        self.dq[2]-=wi*self.dq[1]+wi**2/2*self.dq[0]
         
         if (self.config.ctype == 'upwind'):
             for i in range(0,3):
-                self.Fi[i] -= 0.5*np.abs(ui-wi)*self.dq[i]
+                self.Fi[i] -= 0.5*np.abs(ui)*self.dq[i]
                 
         if (self.config.ctype == 'Riemann'):
             gamma = self.scale.gamma
             
-            one = np.ones(self.nx-1)
-            lam = [ui-c_si-wi,ui-wi,ui+c_si-wi]
-            #lam = [ui-c_si,ui,ui+c_si]
-            detR = 2*c_si**2/(gamma-1)
-            R = [[one,one,one],
-                 [ui-c_si,ui,ui+c_si],
-                 [0.5*detR+0.5*ui**2-c_si*ui,
-                  0.5*ui**2,
-                  0.5*detR+0.5*ui**2+c_si*ui]]
-
-            R1 = [[c_si*ui/(gamma-1)+0.5*ui**2,-c_si/(gamma-1)-ui,one],
-                  [detR-ui**2,2*ui,-2*one],
-                  [-c_si*ui/(gamma-1)+0.5*ui**2,c_si/(gamma-1)-ui,one]]
+            one = np.ones(self.nx-1,dtype=np.float32)
+            #lam = [ui-c_sl-wi,ui-wi,ui+c_sr-wi]
+            lam = [ui-c_sl,ui,ui+c_sr]
+            detR = c_sl**2/(gamma-1) + c_sr**2/(gamma-1)
             
-            ai = [np.sum([R1[i][j]/detR*self.dq[j] for j in range(0,3)],0) for i in range(0,3)]
+            R = [[one,one,one],
+                 [-c_sl,one*0,c_sr],
+                 [c_sl**2/(gamma-1),one*0,c_sr**2/(gamma-1)]]
+
+            Ri = [[one*0,-c_sl/(gamma-1),one],
+                  [c_sl**2/(gamma-1)+c_sr**2/(gamma-1),one*0,-2*one],
+                  [one*0,c_sr/(gamma-1),one]]
+            
+            ai = [np.sum([Ri[i][j]/detR*self.dq[j] for j in range(0,3)],0) for i in range(0,3)]
             Wi = [[R[i][j]*ai[j] for j in range(0,3)] for i in range(0,3)]
 
             for i in range(0,3):       
@@ -368,7 +379,17 @@ class Solver(object):
         n_s = self.get_substep(dt)
         
         self.advect(dt/n_s)
-
+        
+        """
+        for i in range(0,3):
+            self.q[i][1:-1] -= dt/n_s*self.q[i][1:-1]*self.d_dx(self.w)
+        
+        for i in range(0,self.ndim):
+            self.X[i] += dt/n_s*self.w*self.ex[i]
+            self.Xi[i] += dt/n_s*self.wi*self.exi[i]
+            self.update_x()    
+        """    
+        
         if self.Lambda:
             self.q[2][1:-1] -= dt/n_s*self.q[0][1:-1]**2*self.Lambda()[1:-1]
         if self.Hr:
@@ -377,14 +398,6 @@ class Solver(object):
             self.q[2][1:-1] += dt/n_s*self.q[1][1:-1]*self.g()
             self.q[1][1:-1] += dt/n_s*self.q[0][1:-1]*self.g()   
         
-        for i in range(0,self.ndim):
-            self.X[i][1:-1] += dt/n_s*self.w[1:-1]*self.ex[i]
-            self.Xi[i] += dt/n_s*self.wi*self.exi[i]
-            self.update_x()
-        
-        for i in range(0,3):
-            self.q[i][1:-1] -= dt/n_s*self.q[i][1:-1]*self.d_dx(self.w)
- 
         #self.w[1:-1] += dt/n_s*self.d_dx(self.p)/self.q[0][1:-1]
         #self.wi += dt/n_s*delta(self.p)/self.dx/self.average(self.q[0])
         
