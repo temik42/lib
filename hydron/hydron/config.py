@@ -24,9 +24,6 @@ class Scale(object):
         self.rhou = self.rho*self.u
         self.rhoe = self.rhou*self.u
         
-        self.rl = self.rhoe/self.n**2/self.t
-        self.kappa = self.x**2/self.T*self.rhoe/self.t
-
 
 class defconfig(object):
     def __init__(self):
@@ -38,12 +35,7 @@ class defconfig(object):
         self.btype = 'mirror'   #boundary type; one of: 'continuous', 'mirror', 'periodic', 'constant' or 'stationary'
         self.itype = 'Roe'   #cell interface type; one of: 'average' or 'Roe'
         self.ctype = 'Riemann'   #correction-step type; one of: 'Riemann' or 'upwind'
-
-        self.g = False   #acceleration, vector
-        self.kappa = False   #diffusion coeffitient, function of T
-        self.Lambda = False   #radiation loss function, function of T
-        self.Hr = False   #heat rate function, function of s and t
-        
+ 
         self.cfl_lim = 0.1    #CFL limiter
         
         self.set_scale()
@@ -62,11 +54,5 @@ class loopconfig(defconfig):
         self.base_scale=[1.,Sun.n_c,Sun.T_c]
         
         self.btype = 'stationary'
-        
-        #self.g = [0,0,-Sun.g_sun]
-        self.g = False
-        self._Lambda = Sun.Lambda('chianti_cor.npz')
-        self.Lambda = lambda T: self._Lambda.get(T)
-        self.kappa = Sun.kappa
         
         self.set_scale()
